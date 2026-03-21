@@ -10,11 +10,9 @@ app.use(express.json());
 
 const client = new MongoClient(process.env.MONGO_URI, {
   tls: true,
-  tlsAllowInvalidHostnames: true,
-  tlsAllowInvalidCertificates: true,
+  rejectUnauthorized: false,
   serverSelectionTimeoutMS: 30000,
-  socketTimeoutMS: 45000,
-  family: 4
+  socketTimeoutMS: 45000
 });
 
 
