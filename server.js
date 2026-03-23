@@ -74,6 +74,17 @@ async function start() {
     }
   });
 
+app.get('/settori', async (req, res) => {
+  try {
+    const settori = await quesiti.distinct('settore');
+    res.json([...new Set(settori)].sort()); // unici + ordinati
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Errore settori' });
+  }
+});
+
+
   app.get("/progressi", async (req, res) => {
     try {
       const items = await progressi.find({}).toArray();
@@ -98,6 +109,7 @@ async function start() {
       res.status(500).json({ error: "Errore nel recupero progressi" });
     }
   });
+  
 
   app.post("/progressi", async (req, res) => {
     try {
