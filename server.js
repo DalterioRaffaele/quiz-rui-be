@@ -35,23 +35,30 @@ async function start() {
 
   // ── authMiddleware DENTRO start() ────────────────
   async function authMiddleware(req, res, next) {
-    const authHeader = req.headers.authorization;
-    if (!authHeader?.startsWith('Bearer ')) {
-      return res.status(401).json({ error: 'Token mancante' });
-    }
-    const token = authHeader.split(' ')[1];
-    try {
-      const decoded = jwt.verify(token, JWT_SECRET);
-      const utente = await utenti.findOne({ username: decoded.username });
-      if (!utente || utente.sessionToken !== decoded.sessionToken) {
-        return res.status(401).json({ error: 'Sessione non valida o scaduta' });
-      }
-      req.user = decoded;
-      next();
-    } catch {
-      res.status(401).json({ error: 'Token non valido o scaduto' });
-    }
+  const authHeader = req.headers.authorization;
+  if (!authHeader?.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Token mancante' });
   }
+  const token = authHeader.split(' ')[1];
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET);
+
+    // Se il JWT non ha sessionToken (token vecchio pre-feature) → rifiuta
+    if (!decoded.sessionToken) {
+      return res.status(401).json({ error: 'Sessione scaduta, effettua il login' });
+    }
+
+    const utente = await utenti.findOne({ username: decoded.username });
+    if (!utente || utente.sessionToken !== decoded.sessionToken) {
+      return res.status(401).json({ error: 'Sessione non valida o scaduta' });
+    }
+
+    req.user = decoded;
+    next();
+  } catch {
+    res.status(401).json({ error: 'Token non valido o scaduto' });
+  }
+}
 
   // ── SEED ADMIN ───────────────────────────────────
   const adminEsiste = await utenti.findOne({ username: "admin" });
