@@ -34,7 +34,7 @@ async function start() {
   const utenti = db.collection("utenti");
 
   // ── authMiddleware DENTRO start() ────────────────
-  async function authMiddleware(req, res, next) {
+async function authMiddleware(req, res, next) {
   const authHeader = req.headers.authorization;
   if (!authHeader?.startsWith('Bearer ')) {
     return res.status(401).json({ error: 'Token mancante' });
@@ -43,18 +43,19 @@ async function start() {
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
 
-    // Se il JWT non ha sessionToken (token vecchio pre-feature) → rifiuta
-    if (!decoded.sessionToken) {
-      return res.status(401).json({ error: 'Sessione scaduta, effettua il login' });
-    }
-
     const utente = await utenti.findOne({ username: decoded.username });
+    
+    // ← AGGIUNGI QUESTI LOG
+    console.log('decoded.sessionToken:', decoded.sessionToken);
+    console.log('utente.sessionToken: ', utente?.sessionToken);
+    console.log('match:', decoded.sessionToken === utente?.sessionToken);
+
+    if (!decoded.sessionToken) {
+      return res.status(401).json({ error: 'Sessione scaduta', code: 'SESSION_EXPIRED' });
+    }
     if (!utente || utente.sessionToken !== decoded.sessionToken) {
-  return res.status(401).json({ 
-    error: 'Sessione terminata: accesso effettuato da un altro dispositivo',
-    code: 'SESSION_EXPIRED'
-  });
-}
+      return res.status(401).json({ error: 'Sessione terminata', code: 'SESSION_EXPIRED' });
+    }
 
     req.user = decoded;
     next();
