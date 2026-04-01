@@ -7,7 +7,12 @@ require("dotenv").config();
 const { v4: uuidv4 } = require("uuid");
 
 const app = express();
-app.use(cors());
+
+app.use(cors({
+  origin: ['https://quiz-rui-fe.netlify.app', 'http://localhost:4200'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']
+}));
 app.use(express.json());
 
 const client = new MongoClient(process.env.MONGO_URI, {
@@ -19,18 +24,6 @@ const client = new MongoClient(process.env.MONGO_URI, {
 
 const JWT_SECRET = process.env.JWT_SECRET || "quiz_rui_secret_key";
 
-function authMiddleware(req, res, next) {
-  const token = req.headers.authorization?.split(" ")[1];
-  if (!token) return res.status(401).json({ error: "Token mancante" });
-  try {
-    const decoded = jwt.verify(token, JWT_SECRET);
-    req.user = decoded;
-    next();
-  } catch {
-    res.status(401).json({ error: "Token non valido o scaduto" });
-  }
-}
-
 async function start() {
   await client.connect();
   console.log("Connesso a MongoDB");
@@ -40,6 +33,25 @@ async function start() {
   const progressi = db.collection("progressi");
   const utenti = db.collection("utenti");
 
+  // ── authMiddleware DENTRO start() ────────────────
+  async function authMiddleware(req, res, next) {
+    const authHeader = req.headers.authorization;
+    if (!authHeader?.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'Token mancante' });
+    }
+    const token = authHeader.split(' ')[1];
+    try {
+      const decoded = jwt.verify(token, JWT_SECRET);
+      const utente = await utenti.findOne({ username: decoded.username });
+      if (!utente || utente.sessionToken !== decoded.sessionToken) {
+        return res.status(401).json({ error: 'Sessione non valida o scaduta' });
+      }
+      req.user = decoded;
+      next();
+    } catch {
+      res.status(401).json({ error: 'Token non valido o scaduto' });
+    }
+  }
 
   // ── SEED ADMIN ───────────────────────────────────
   const adminEsiste = await utenti.findOne({ username: "admin" });
