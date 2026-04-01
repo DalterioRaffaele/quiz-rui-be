@@ -9,7 +9,7 @@ const { v4: uuidv4 } = require("uuid");
 const app = express();
 
 app.use(cors({
-  origin: ['https://quiz-rui-fe.netlify.app', 'http://localhost:4200'],
+  origin: ['https://quiz-rui-fe.onrender.com', 'http://localhost:4200'],
   allowedHeaders: ['Content-Type', 'Authorization'],
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']
 }));
