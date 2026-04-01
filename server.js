@@ -50,8 +50,11 @@ async function start() {
 
     const utente = await utenti.findOne({ username: decoded.username });
     if (!utente || utente.sessionToken !== decoded.sessionToken) {
-      return res.status(401).json({ error: 'Sessione non valida o scaduta' });
-    }
+  return res.status(401).json({ 
+    error: 'Sessione terminata: accesso effettuato da un altro dispositivo',
+    code: 'SESSION_EXPIRED'
+  });
+}
 
     req.user = decoded;
     next();
