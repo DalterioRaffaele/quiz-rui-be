@@ -4,6 +4,7 @@ const cors = require("cors");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 require("dotenv").config();
+const { v4: uuidv4 } = require("uuid");
 
 const app = express();
 app.use(cors());
@@ -22,7 +23,8 @@ function authMiddleware(req, res, next) {
   const token = req.headers.authorization?.split(" ")[1];
   if (!token) return res.status(401).json({ error: "Token mancante" });
   try {
-    req.user = jwt.verify(token, JWT_SECRET);
+    const decoded = jwt.verify(token, JWT_SECRET);
+    req.user = decoded;
     next();
   } catch {
     res.status(401).json({ error: "Token non valido o scaduto" });
@@ -37,6 +39,19 @@ async function start() {
   const quesiti = db.collection("quesiti");
   const progressi = db.collection("progressi");
   const utenti = db.collection("utenti");
+
+  // ← sessionGuard DEVE stare qui dentro, dopo che utenti è definita
+  async function sessionGuard(req, res, next) {
+    try {
+      const utente = await utenti.findOne({ username: req.user.username });
+      if (!utente || utente.sessionToken !== req.user.sessionToken) {
+        return res.status(401).json({ error: "Sessione non valida, effettua di nuovo il login" });
+      }
+      next();
+    } catch {
+      res.status(500).json({ error: "Errore verifica sessione" });
+    }
+  }
 
   // ── SEED ADMIN ───────────────────────────────────
   const adminEsiste = await utenti.findOne({ username: "admin" });
@@ -56,8 +71,10 @@ async function start() {
       if (!utente) return res.status(401).json({ error: "Credenziali non valide" });
       const valida = await bcrypt.compare(password, utente.password);
       if (!valida) return res.status(401).json({ error: "Credenziali non valide" });
+      const sessionToken = uuidv4();
+      await utenti.updateOne({ username }, { $set: { sessionToken } });
       const token = jwt.sign(
-        { username: utente.username, role: utente.role },
+        { username: utente.username, role: utente.role, sessionToken },
         JWT_SECRET,
         { expiresIn: "7d" }
       );
@@ -67,7 +84,16 @@ async function start() {
     }
   });
 
-  app.post("/auth/register", authMiddleware, async (req, res) => {
+  app.post("/auth/logout", authMiddleware, sessionGuard, async (req, res) => {
+    try {
+      await utenti.updateOne({ username: req.user.username }, { $set: { sessionToken: null } });
+      res.json({ ok: true });
+    } catch {
+      res.status(500).json({ error: "Errore logout" });
+    }
+  });
+
+  app.post("/auth/register", authMiddleware, sessionGuard, async (req, res) => {
     try {
       if (req.user.role !== "supervisor") return res.status(403).json({ error: "Non autorizzato" });
       const { username, password, role = "limited" } = req.body;
@@ -81,7 +107,7 @@ async function start() {
     }
   });
 
-  app.get("/auth/utenti", authMiddleware, async (req, res) => {
+  app.get("/auth/utenti", authMiddleware, sessionGuard, async (req, res) => {
     try {
       if (req.user.role !== "supervisor") return res.status(403).json({ error: "Non autorizzato" });
       const lista = await utenti.find({}, { projection: { password: 0 } }).toArray();
@@ -91,7 +117,7 @@ async function start() {
     }
   });
 
-  app.delete("/auth/utenti/:username", authMiddleware, async (req, res) => {
+  app.delete("/auth/utenti/:username", authMiddleware, sessionGuard, async (req, res) => {
     try {
       if (req.user.role !== "supervisor") return res.status(403).json({ error: "Non autorizzato" });
       if (req.params.username === "admin") return res.status(403).json({ error: "Non puoi eliminare admin" });
@@ -102,7 +128,7 @@ async function start() {
     }
   });
 
-  app.put("/auth/utenti/:username/password", authMiddleware, async (req, res) => {
+  app.put("/auth/utenti/:username/password", authMiddleware, sessionGuard, async (req, res) => {
     try {
       if (req.user.role !== "supervisor") return res.status(403).json({ error: "Non autorizzato" });
       const { newPassword } = req.body;
@@ -117,7 +143,7 @@ async function start() {
 
   // ── DOMANDE ──────────────────────────────────────
 
-  app.get("/settori", authMiddleware, async (req, res) => {
+  app.get("/settori", authMiddleware, sessionGuard, async (req, res) => {
     try {
       const settori = await quesiti.distinct("settore");
       res.json([...new Set(settori)].sort());
@@ -127,7 +153,7 @@ async function start() {
     }
   });
 
-  app.get("/materie", authMiddleware, async (req, res) => {
+  app.get("/materie", authMiddleware, sessionGuard, async (req, res) => {
     try {
       const settore = req.query.settore || "tutti";
       const filter = settore !== "tutti" ? { settore } : {};
@@ -140,7 +166,7 @@ async function start() {
     }
   });
 
-  app.get("/domande", authMiddleware, async (req, res) => {
+  app.get("/domande", authMiddleware, sessionGuard, async (req, res) => {
     try {
       const settore = req.query.settore || "tutti";
       const materia = req.query.materia || "tutte";
@@ -161,7 +187,7 @@ async function start() {
 
   // ── PROGRESSI ────────────────────────────────────
 
-  app.get("/progressi", authMiddleware, async (req, res) => {
+  app.get("/progressi", authMiddleware, sessionGuard, async (req, res) => {
     try {
       const items = await progressi.find({ username: req.user.username }).toArray();
       const result = {};
@@ -184,7 +210,7 @@ async function start() {
     }
   });
 
-  app.post("/progressi", authMiddleware, async (req, res) => {
+  app.post("/progressi", authMiddleware, sessionGuard, async (req, res) => {
     try {
       const { numero, domanda, materia, settore, seen, correct, wrong, lastResult } = req.body;
       if (!numero) return res.status(400).json({ error: "Numero domanda mancante" });
@@ -212,7 +238,7 @@ async function start() {
     }
   });
 
-  app.delete("/progressi", authMiddleware, async (req, res) => {
+  app.delete("/progressi", authMiddleware, sessionGuard, async (req, res) => {
     try {
       const filter = req.user.role === "supervisor" ? {} : { username: req.user.username };
       await progressi.deleteMany(filter);
