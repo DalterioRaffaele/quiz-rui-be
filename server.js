@@ -40,18 +40,6 @@ async function start() {
   const progressi = db.collection("progressi");
   const utenti = db.collection("utenti");
 
-  // ← sessionGuard DEVE stare qui dentro, dopo che utenti è definita
-  async function sessionGuard(req, res, next) {
-    try {
-      const utente = await utenti.findOne({ username: req.user.username });
-      if (!utente || utente.sessionToken !== req.user.sessionToken) {
-        return res.status(401).json({ error: "Sessione non valida, effettua di nuovo il login" });
-      }
-      next();
-    } catch {
-      res.status(500).json({ error: "Errore verifica sessione" });
-    }
-  }
 
   // ── SEED ADMIN ───────────────────────────────────
   const adminEsiste = await utenti.findOne({ username: "admin" });
@@ -84,7 +72,7 @@ async function start() {
     }
   });
 
-  app.post("/auth/logout", authMiddleware, sessionGuard, async (req, res) => {
+  app.post("/auth/logout", authMiddleware, async (req, res) => {
     try {
       await utenti.updateOne({ username: req.user.username }, { $set: { sessionToken: null } });
       res.json({ ok: true });
@@ -93,7 +81,7 @@ async function start() {
     }
   });
 
-  app.post("/auth/register", authMiddleware, sessionGuard, async (req, res) => {
+  app.post("/auth/register", authMiddleware, async (req, res) => {
     try {
       if (req.user.role !== "supervisor") return res.status(403).json({ error: "Non autorizzato" });
       const { username, password, role = "limited" } = req.body;
@@ -107,7 +95,7 @@ async function start() {
     }
   });
 
-  app.get("/auth/utenti", authMiddleware, sessionGuard, async (req, res) => {
+  app.get("/auth/utenti", authMiddleware, async (req, res) => {
     try {
       if (req.user.role !== "supervisor") return res.status(403).json({ error: "Non autorizzato" });
       const lista = await utenti.find({}, { projection: { password: 0 } }).toArray();
@@ -117,7 +105,7 @@ async function start() {
     }
   });
 
-  app.delete("/auth/utenti/:username", authMiddleware, sessionGuard, async (req, res) => {
+  app.delete("/auth/utenti/:username", authMiddleware, async (req, res) => {
     try {
       if (req.user.role !== "supervisor") return res.status(403).json({ error: "Non autorizzato" });
       if (req.params.username === "admin") return res.status(403).json({ error: "Non puoi eliminare admin" });
@@ -128,7 +116,7 @@ async function start() {
     }
   });
 
-  app.put("/auth/utenti/:username/password", authMiddleware, sessionGuard, async (req, res) => {
+  app.put("/auth/utenti/:username/password", authMiddleware, async (req, res) => {
     try {
       if (req.user.role !== "supervisor") return res.status(403).json({ error: "Non autorizzato" });
       const { newPassword } = req.body;
@@ -143,7 +131,7 @@ async function start() {
 
   // ── DOMANDE ──────────────────────────────────────
 
-  app.get("/settori", authMiddleware, sessionGuard, async (req, res) => {
+  app.get("/settori", authMiddleware, async (req, res) => {
     try {
       const settori = await quesiti.distinct("settore");
       res.json([...new Set(settori)].sort());
@@ -153,7 +141,7 @@ async function start() {
     }
   });
 
-  app.get("/materie", authMiddleware, sessionGuard, async (req, res) => {
+  app.get("/materie", authMiddleware, async (req, res) => {
     try {
       const settore = req.query.settore || "tutti";
       const filter = settore !== "tutti" ? { settore } : {};
@@ -166,7 +154,7 @@ async function start() {
     }
   });
 
-  app.get("/domande", authMiddleware, sessionGuard, async (req, res) => {
+  app.get("/domande", authMiddleware, async (req, res) => {
     try {
       const settore = req.query.settore || "tutti";
       const materia = req.query.materia || "tutte";
@@ -187,7 +175,7 @@ async function start() {
 
   // ── PROGRESSI ────────────────────────────────────
 
-  app.get("/progressi", authMiddleware, sessionGuard, async (req, res) => {
+  app.get("/progressi", authMiddleware, async (req, res) => {
     try {
       const items = await progressi.find({ username: req.user.username }).toArray();
       const result = {};
@@ -210,7 +198,7 @@ async function start() {
     }
   });
 
-  app.post("/progressi", authMiddleware, sessionGuard, async (req, res) => {
+  app.post("/progressi", authMiddleware, async (req, res) => {
     try {
       const { numero, domanda, materia, settore, seen, correct, wrong, lastResult } = req.body;
       if (!numero) return res.status(400).json({ error: "Numero domanda mancante" });
@@ -238,7 +226,7 @@ async function start() {
     }
   });
 
-  app.delete("/progressi", authMiddleware, sessionGuard, async (req, res) => {
+  app.delete("/progressi", authMiddleware, async (req, res) => {
     try {
       const filter = req.user.role === "supervisor" ? {} : { username: req.user.username };
       await progressi.deleteMany(filter);
